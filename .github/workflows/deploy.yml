@@ -22,7 +22,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # AWS Academy requiere token de sesión
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Iniciar sesión en Amazon ECR
@@ -46,18 +46,23 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
+          # Autenticarse en ECR dentro de la instancia
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           
+          # Limpiar contenedores previos
           docker stop backend-app || true
           docker rm backend-app || true
           
+          # Descargar la versión más reciente de la imagen
           docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           
-          # Levantar backend en puerto 3000. Asegurar persistencia de red si es necesario.
-          # Se pasan las credenciales de BD mediante entorno o se configuran en la EC2.
+          # Inyectar variables de entorno directamente en el comando docker run
           docker run -d \
             --name backend-app \
             --restart unless-stopped \
             -p 3000:3000 \
-            --env-file /home/${{ secrets.EC2_USERNAME }}/.env \
+            -e DB_HOST=${{ secrets.EC2_HOST_DB }} \
+            -e DB_USER=root \
+            -e DB_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }} \
+            -e DB_NAME=proyecto_db \
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
